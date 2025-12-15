@@ -100,6 +100,55 @@ plot.points <- function(locations, group = NULL, boundary = NULL,
 }
 
 
+## plot curves ----
+
+plot.curve <- function(locations, f, true = NULL,  limits = NULL){
+  
+  data <- data.frame(locations, y = f)
+  colnames(data) <- c("x", "y")
+  
+  plot <- ggplot() +
+    geom_line(data = data, aes(x = x, y = y)) # +
+  # coord_fixed()
+  
+  if(!is.null(true)) {
+    data_true <- data.frame(locations, y = true)
+    colnames(data_true) <- c("x", "y")
+    plot <- plot +
+      geom_line(data = data_true, aes(x = x, y = y), linetype = "dotted")
+  }
+  
+  if(!is.null(limits)) {
+    plot <- plot + ylim(limits[1], limits[2])
+  }
+  
+  return(plot)
+}
+
+plot.curve_points <- function(locations, f, true = NULL, size = 1, limits = NULL){
+  
+  data <- data.frame(locations, y = f)
+  colnames(data) <- c("x", "y")
+  
+  plot <- ggplot() +
+    geom_point(data = data, aes(x = x, y = y), size = size) # +
+  # coord_fixed()
+  
+  if(!is.null(true)) {
+    data_true <- data.frame(locations, y = true)
+    colnames(data_true) <- c("x", "y")
+    plot <- plot +
+      geom_line(data = data_true, aes(x = x, y = y))
+  }
+  
+  if(!is.null(limits)) {
+    plot <- plot + ylim(limits[1], limits[2])
+  }
+  
+  return(plot)
+}
+
+
 # fields ----
 
 ## plot field: points version
@@ -210,8 +259,95 @@ plot.field_tile <- function(nodes, f, boundary = NULL,
       )
     }
   } else {
-    plot <- plot + scale_fill_viridis_d(
-      option = colormap # ,
+    if(length(colormap)==1) {
+      plot <- plot + scale_fill_viridis_d(
+        option = colormap # ,
+        # labels = scales::scientific_format()
+      )
+    } else {
+      plot <- plot + scale_fill_gradientn(
+        colours = colormap # ,
+        # labels = scales::scientific_format()
+      )
+    }
+  }
+  
+  if (!is.null(boundary)) {
+    plot <- plot +
+      geom_polygon(data = fortify(boundary), aes(x = long, y = lat), fill = "transparent", color = "black", linewidth = 1)
+  }
+  
+  ## add a legend if required
+  if (LEGEND) {
+    # plot <- plot + guides(fill=guide_legend(nrow=1, byrow=TRUE))
+  } else {
+    plot <- plot + guides(fill = "none")
+  }
+  
+  return(plot)
+}
+
+
+
+plot.field_tile_gradient <- function(nodes, f, boundary = NULL,
+                                     limits = NULL, breaks = NULL, colormap = "D",
+                                     discrete = FALSE, ISOLINES = FALSE, LEGEND = FALSE) {
+  
+  if(is.null(f)) {
+    return(ggplot() + theme_void())
+  }
+  
+  data <- data.frame(nodes, value = f)
+  colnames(data) <- c("x", "y", "value")
+  
+  data <- na.omit(data)
+  
+  plot <- ggplot() +
+    geom_tile(data = data, aes(x = x, y = y, fill = value)) +
+    coord_fixed()
+  
+  if(!is.null(breaks) || ISOLINES) {
+    color = "black"
+    limits_real <- range(data$value)
+    if(is.null(breaks)) {
+      breaks <- seq(limits_real[1], limits_real[2], length = 10)
+    }
+    breaks_initial <- breaks
+    h = breaks[2]-breaks[1]
+    if(limits_real[1] < min(breaks)) {
+      breaks <- c(sort(seq(min(breaks), limits_real[1]-h, by = -h)[-1]), breaks)
+    }
+    if(limits_real[2] > max(breaks)) {
+      breaks <- c(breaks, seq(max(breaks), limits_real[2]+h, by = h)[-1])
+    }
+    if(length(breaks) > 2*length(breaks_initial) ) {
+      breaks <- breaks_initial
+      color = "red"
+    }
+    plot <- plot +
+      geom_contour(data = data, aes(x = x, y = y, z = value), color = color, breaks = breaks)
+  }
+  
+  if (!discrete) {
+    if(!is.null(breaks)) {
+      h = breaks[2]-breaks[1]
+      limits <- limits + c(-h, h)
+    }
+    if (is.null(limits)) {
+      plot <- plot + scale_fill_gradientn(
+        colours = colormap #,
+        # labels = scales::scientific_format()
+      )
+    } else {
+      plot <- plot + scale_fill_gradientn(
+        colours = colormap,
+        limits = limits # ,
+        # labels = scales::scientific_format()
+      )
+    }
+  } else {
+    plot <- plot + scale_fill_gradientn(
+      colours = colormap # ,
       # labels = scales::scientific_format()
     )
   }
@@ -350,7 +486,7 @@ plot.multiple_lines <- function(data,
     LOGX <- TRUE
     LOGY <- TRUE
   }
-
+  
   if(is.logical(x_breaks) && x_breaks) {
     x_breaks <- unique(data$x)
   }

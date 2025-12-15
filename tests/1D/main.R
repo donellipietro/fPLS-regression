@@ -1,19 +1,23 @@
-# % %%%%%%%%%%%%%% %
-# % % Test: fPCA % %
-# % %%%%%%%%%%%%%% %
+# % %%%%%%%%%%%%%%%%%%% %
+# % % Test: fPLS - 1D % %
+# % %%%%%%%%%%%%%%%%%%% %
 
 rm(list = ls())
 graphics.off()
 
 ## global variables ----
 
-test_suite <- "example"
-TEST_SUITE <- "fPCA"
+test_suite <- "1D"
+TEST_SUITE <- "fPLS - 1D"
+
+mode_MV <- "PLS-R"
+mode_fun <- "fPLS-R"
 
 
 # libraries ----
 
 ## fda
+suppressMessages(library(fda))
 suppressMessages(library(fdaPDE))
 suppressMessages(library(fdaPDE2))
 
@@ -53,9 +57,10 @@ source("src/utils/wrappers.R")
 source("src/utils/errors.R")
 source("src/utils/results_management.R")
 source("src/utils/plots.R")
+source("src/utils/PLS.R")
 
 ## test specific functions
-source(paste("tests/", test_suite, "/utils/generate_2D_data.R", sep = ""))
+source(paste("tests/", test_suite, "/utils/generate_data.R", sep = ""))
 source(paste("tests/", test_suite, "/utils/models_evaluation.R", sep = ""))
 
 
@@ -68,8 +73,8 @@ mkdir(c(path_results, path_images))
 path_queue <- paste("queue/", sep = "")
 path_logs <- paste("logs/", sep = "")
 mkdir(c(path_logs))
-  
-  
+
+
 # options ----
 
 ## force testing even if a fit is already available
@@ -81,7 +86,7 @@ RUN <- list()
 RUN$tests <- TRUE
 RUN$analysis <- TRUE
 RUN$quantitative_analysis <- TRUE
-RUN$qualitative_analysis <- TRUE
+RUN$qualitative_analysis <- FALSE
 
 ## global variables
 RSTUDIO <- FALSE
@@ -89,27 +94,27 @@ RSTUDIO <- FALSE
 
 ## calibration parameters ----
 seed <- 0 # for gcv calibration procedure
-lambda_fixed <- fdaPDE2::hyperparameters(1e-7)
+lambda_fixed <- fdaPDE2::hyperparameters(1e-9)
 lambda_grid <- fdaPDE2::hyperparameters(10^seq(-9, 2, by = 0.1))
 
 
 ## visualization options ----
 
 ## colors used in the plots
-colors <- c(brewer.pal(3, "Greys")[3], brewer.pal(3, "Blues")[2:3])
+colors <- c(brewer.pal(3, "Greys")[3], brewer.pal(3, "Blues")[2:3], brewer.pal(3, "Purples")[1:3])
 
 ## names and labels
-names_models <- c("MV_PCA", "fPCA_off", "fPCA_kcv")
-lables_models <- c("MV-PCA", "fPCA (no calibration)", "fPCA (kcv calibration)")
+names_models <- c("MV_PLS", "fPLS_off", "fPLS_gcv", "B_fPLS", "B_fPLS_smooth", "PB_fPLS")
+lables_models <- c("MV-PLS", "fPLS (no calibration)", "fPLS (gcv calibration)", "B-fPLS", "B-fPLS smoothing splines", "PB-fPLS")
 
 ## resolution of the high resolution grid
-n_nodes_HR_grid <- 1000
+n_knots_HR <- 500
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
-# Test: fPCA ----
+# Test: fPLS - 1D ----
 cat.script_title(paste("Test:", TEST_SUITE))
 
 
@@ -119,9 +124,9 @@ cat.section_title("Options")
 ## check arguments passed by terminal, set default if not present
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) == 0) {
-  RSTUDIO <- FALSE
+  RSTUDIO <- TRUE
   source(paste("tests/", test_suite, "/utils/generate_options.R", sep = ""))
-  args[1] <- "test1"
+  args[1] <- "test0"
   generate_options(args[1], path_queue)
   args[2] <- sort(list.files(path_queue))[1]
 }
@@ -139,10 +144,9 @@ n_locs <- parsed_json$dimensions$n_locs
 n_stat_units <- parsed_json$dimensions$n_stat_units
 n_comp <- parsed_json$dimensions$n_comp
 n_reps <- parsed_json$dimensions$n_reps
-mean <- parsed_json$data$mean
 locs_eq_nodes <- parsed_json$data$locs_eq_nodes
-NSR_last_comp <- parsed_json$noise$NSR
-# ... (add options if necessary)
+NSR_X_lc <- parsed_json$noise$NSR_X_lc
+NSR_Y <- parsed_json$noise$NSR_Y
 
 ## log file
 file_log <- paste(path_logs, "log_",name_test,".txt", sep = "")
@@ -169,18 +173,25 @@ mkdir(path_images)
 ## test ----
 cat.section_title("Test")
 
-## load domain
-generated_domain <- generate_domain(name_mesh, n_nodes)
-domain <- generated_domain$domain
-domain_boundary <- generated_domain$domain_boundary
-loadings_true_generator <- generated_domain$loadings_true_generator
-mesh <- generated_domain$mesh
+## domain
+domain <- fdaPDE2::Mesh(unit_segment(n_nodes))
+domain_boundary <- c(0,1)
+spline_basis <- create.bspline.basis(rangeval = domain_boundary, breaks = domain$nodes)
+
+## HR grid
+grid_HR <- seq(0,1, length = n_knots_HR)
+Psi_HR <- eval.basis(grid_HR, spline_basis)
 
 ## locations
-locations <- generate_locations(generated_domain, locs_eq_nodes)
+if(locs_eq_nodes) {
+  locations <- as.vector(domain$nodes)
+  Psi_locs <- eval.basis(locations, spline_basis)
+} else {
+  locations <- seq(0,1, length = n_locs) + rnorm(n_locs, 0, 0.25/n_locs)
+  locations <- closest(grid_HR, locations)
+  Psi_locs <- eval.basis(locations, spline_basis)
+}
 
-## grid
-grid <- spsample(domain_boundary, n_nodes_HR_grid, "regular")@coords
 
 ## fit the models n_reps times
 if (RUN$tests) {
@@ -197,23 +208,32 @@ if (RUN$tests) {
     if (any(!file.exists(file_model_vect)) || FORCE_FIT || FORCE_EVALUATE) {
       ## generate data
       cat("- Data generation\n")
-      generated_data <- generate_2D_data(
-        domain = domain,
-        locs = locations,
-        n_stat_units = n_stat_units,
+      generated_data <- generate_data(
+        grid_HR, locations,
+        n_stat_units = n_stat_units, 
         n_comp = n_comp,
-        seed = i,
-        NSR_last_comp = NSR_last_comp,
-        loadings_true_generator = loadings_true_generator,
-        mean_generator = ifelse(mean, log_mean_generator, function(locs) { return(locs[,1]*0) })
+        score_dist = "norm",
+        NSR_X_lc = NSR_X_lc,
+        NSR_Y = NSR_Y,
+        seed = i
       )
-      
       ## assembly functional data
-      data <- functional_data(
+      data <- functional_regression_data(
         domain = domain,
         locations = locations,
-        X = generated_data$X
+        Y = generated_data$data$Y,
+        X = generated_data$data$X
       )
+      if(name_main_test == "test3") {
+        data_B_fPLS <- data
+      } else {
+        data_B_fPLS <- functional_regression_data(
+          domain = list(nodes = seq(0, 1, length = 11)), # min(round(n_locs/4), 40) + 2
+          locations = locations,
+          Y = generated_data$data$Y,
+          X = generated_data$data$X
+        )
+      }
     }
     
     ## fit models
@@ -239,9 +259,7 @@ cat.subsection_title("Quantitative analysis")
 
 if (RUN$quantitative_analysis) {
   ## open a pdf where to save plots (quantitative analysis)
-  if (!RSTUDIO) {
-    pdf(file = paste(path_images, name_test, "_quantitative.pdf", sep = ""))
-  }
+  pdf(file = paste(path_images, name_test, "_quantitative.pdf", sep = ""))
   
   ## plots
   source(paste("tests/", test_suite, "/templates/plot_quantitative_results.R", sep = ""))

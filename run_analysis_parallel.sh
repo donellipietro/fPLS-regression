@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# $1: test suite name
-# $2: test name
+# $1: name R script
+# $2: name test
+# $3: number of calls
 
 
 start=$(date +%s.%N)
@@ -24,37 +25,8 @@ fi
 ###############################################################################
 
 
-RScript src/init.R "$1" "$2"
-
-# Set the directory containing the files
-directory="queue/"
-
-# Check if the directory exists
-if [ ! -d "$directory" ]; then
-echo "Directory $directory not found."
-exit 1
-fi
-
-# Change to the specified directory
-cd "$directory" || exit 1
-
-# Define your task function
-task_function() {
-  cd ../
-  # Run RScript with the current file as an argument
-  RScript tests/"$1"/main.R "$2" "$3"
-  cd "$directory" || exit 1
-}
-
-# Export the task function so that it can be used by GNU Parallel
-export -f task_function
-
 # Run tasks in parallel using GNU Parallel
-ls * | parallel -j "$PARALLEL_CORES" task_function "$1" "$2"
-
-## Run time complexity analysis
-cd ../
-RScript tests/"$1"/post_processing.R "$2"
+seq 1 $3 | parallel -j "$PARALLEL_CORES" RScript analysis/$1 $2 {}
 
 
 ###############################################################################

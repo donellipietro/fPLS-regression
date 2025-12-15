@@ -26,6 +26,16 @@ evaluate_field <- function(grid, f_at_nodes, mesh) {
 
 ## mesh generators
 
+unit_segment <- function(n_nodes) {
+  x <- seq(0, n_nodes-1)/(n_nodes-1)
+  mesh_data <- list(
+    nodes = as.matrix(x),
+    elements = matrix(rep(0, 2*n_nodes), ncol = 2),
+    boundary = as.matrix(rep(0, n_nodes))
+  )
+  return(mesh_data)
+}
+
 unit_square <- function(n_nodes) {
   x <- y <- seq(0, 1, length = sqrt(n_nodes))
   grid <- meshgrid(x, y)

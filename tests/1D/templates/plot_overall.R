@@ -5,7 +5,7 @@ for(name_ao in name_aggregation_option_vect) {
 }
 
 ## plots
-for(i in c(2)) {
+for(i in c(1)) {
   
   boxplot_list <- list()
   plot_list <- list()
@@ -37,7 +37,7 @@ for(i in c(2)) {
                                    c(name_aggregation_option, names_models)]
     colnames(data_plot_trimmed) <- c("Group", names_models)
     indexes <- which(!is.nan(colSums(data_plot_trimmed[, names_models])))
-    data_plot_aggregated <- aggregate(. ~ Group, data = data_plot_trimmed[, c("Group", names(indexes))], FUN = median)
+    # data_plot_aggregated <- aggregate(. ~ Group, data = data_plot_trimmed[, c("Group", names(indexes))], FUN = median)
     
     ## plots
     boxplot_list[[j]] <- plot.grouped_boxplots(
@@ -50,25 +50,9 @@ for(i in c(2)) {
       limits = limits,
       LEGEND = FALSE
     ) + standard_plot_settings()
-    plot_list[[j]] <- plot.multiple_lines(
-      data_plot_aggregated,
-      values_name = NULL, # values_name,
-      x_name = group_name,
-      x_breaks = TRUE,
-      subgroup_name = "Approches",
-      subgroup_labels = lables_models[indexes],
-      subgroup_colors = colors[indexes],
-      LEGEND = FALSE,
-      limits = limits,
-      NORMALIZED = FALSE,
-      LOGX = TRUE
-    ) + standard_plot_settings()
   }
   boxplot <- arrangeGrob(grobs = boxplot_list, ncol = length(labels_cols))
   boxplot <- labled_plots_grid(boxplot, title, labels_cols, labels_rows, 7, 7)
   grid.arrange(boxplot)
-  plot <- arrangeGrob(grobs = plot_list, ncol = length(labels_cols))
-  plot <- labled_plots_grid(plot, title, labels_cols, labels_rows, 9, 7)
-  grid.arrange(plot)
   
 }

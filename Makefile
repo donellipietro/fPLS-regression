@@ -23,20 +23,19 @@ install: install_fdaPDE2 install_femR
 
 # Test targets
 
-test_example: build clean
-	@echo "Running example tests..."
-	@./run_tests.sh example test1
-
-tests: test_example
-	@echo "All tests completed."
-
-# Test targets parallel
-
-test_example_parallel: build clean
-	@echo "Running example tests..."
-	@./run_tests_parallel.sh example test1
+test_1D: build clean
+	@echo "Running fPLS - 1D tests..."
+	# @./run_tests_parallel.sh 1D test1
+	# @./run_tests_parallel.sh 1D test2
+	@./run_tests_parallel.sh 1D test3
 	
-tests_parallel: test_example_parallel
+test_2D: build clean
+	@echo "Running fPLS - 2D tests..."
+	@./run_tests_parallel.sh 2D test1
+	# @./run_tests_parallel.sh 2D test2
+	# @./run_tests_parallel.sh 2D test3
+	
+tests: test_2D
 	@echo "All tests completed."
 
 # Build target
